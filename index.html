@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Secure Name Registry – A premium vault for managing your data privately.">
+    <title>Vault – Secure Name Registry</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ═══════════════════════════════════════════════════════
+         TOAST NOTIFICATIONS CONTAINER
+         ═══════════════════════════════════════════════════════ -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         LOGIN / REGISTER POPUP
+         ═══════════════════════════════════════════════════════ -->
+    <div class="popup-overlay active" id="authPopup">
+        <div class="popup-box">
+            <div class="popup-icon">🔐</div>
+            <div class="popup-header">
+                <h2 id="authTitle">Welcome Back</h2>
+                <p id="authSubtitle">Sign in to access your private vault</p>
+            </div>
+
+            <!-- Tab Switcher -->
+            <div class="tab-switcher">
+                <button class="tab-btn active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+                <button class="tab-btn" id="tabRegister" onclick="switchTab('register')">Register</button>
+            </div>
+
+            <!-- Login Form -->
+            <div id="loginForm">
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" placeholder="Enter your username" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="loginPassword" placeholder="Enter your password">
+                        <button type="button" class="toggle-password" onclick="togglePasswordVisibility('loginPassword', this)">👁</button>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-full" id="loginBtn" onclick="handleLogin()">
+                    Sign In
+                </button>
+            </div>
+
+            <!-- Register Form (hidden initially) -->
+            <div id="registerForm" class="hidden">
+                <div class="form-group">
+                    <label for="regUsername">Choose Username</label>
+                    <input type="text" id="regUsername" placeholder="At least 3 characters" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="regPassword">Create Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="regPassword" placeholder="At least 4 characters">
+                        <button type="button" class="toggle-password" onclick="togglePasswordVisibility('regPassword', this)">👁</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="regPasswordConfirm">Confirm Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="regPasswordConfirm" placeholder="Re-enter password">
+                        <button type="button" class="toggle-password" onclick="togglePasswordVisibility('regPasswordConfirm', this)">👁</button>
+                    </div>
+                </div>
+                <button class="btn btn-accent btn-full" id="registerBtn" onclick="handleRegister()">
+                    Create Account
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         ACCOUNT SWITCH POPUP (Password Re-verification)
+         ═══════════════════════════════════════════════════════ -->
+    <div class="popup-overlay" id="switchPopup">
+        <div class="popup-box">
+            <button class="close-btn" onclick="closeSwitchPopup()">✕</button>
+            <div class="popup-icon">🔄</div>
+            <div class="popup-header">
+                <h2>Switch Account</h2>
+                <p>Select an account and verify your password</p>
+            </div>
+
+            <!-- Account list populated dynamically -->
+            <div class="account-list" id="accountList">
+                <p style="text-align:center; color: var(--text-muted);">Loading accounts...</p>
+            </div>
+
+            <!-- Password verification for the selected account -->
+            <div id="switchPasswordSection" class="hidden">
+                <div class="form-group">
+                    <label for="switchPassword">Enter password for <strong id="switchTargetUser"></strong></label>
+                    <div class="password-wrapper">
+                        <input type="password" id="switchPassword" placeholder="Verify your password">
+                        <button type="button" class="toggle-password" onclick="togglePasswordVisibility('switchPassword', this)">👁</button>
+                    </div>
+                </div>
+                <button class="btn btn-gold btn-full" onclick="verifySwitchAccount()">
+                    🔓 Verify & Switch
+                </button>
+            </div>
+
+            <!-- Remove Account Link -->
+            <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center;">
+                <button class="btn btn-danger btn-sm btn-full" onclick="openRemovePopup()" style="opacity: 0.85;">
+                    🗑 Remove Account from Device
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         REMOVE ACCOUNT POPUP (Permanent Deletion)
+         ═══════════════════════════════════════════════════════ -->
+    <div class="popup-overlay" id="removePopup">
+        <div class="popup-box">
+            <button class="close-btn" onclick="closeRemovePopup()">✕</button>
+            <div class="popup-icon" style="background: linear-gradient(135deg, #ef4444, #dc2626);">⚠️</div>
+            <div class="popup-header">
+                <h2 style="-webkit-text-fill-color: var(--danger);">Remove Account</h2>
+                <p>This will permanently delete your account and all stored data. This action cannot be undone.</p>
+            </div>
+
+            <div class="form-group">
+                <label for="removeUsername">Username to remove</label>
+                <input type="text" id="removeUsername" placeholder="Enter account username" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="removePassword">Confirm Password</label>
+                <div class="password-wrapper">
+                    <input type="password" id="removePassword" placeholder="Enter password to confirm">
+                    <button type="button" class="toggle-password" onclick="togglePasswordVisibility('removePassword', this)">👁</button>
+                </div>
+            </div>
+            <button class="btn btn-full" id="removeBtn" onclick="confirmRemoveAccount()" style="background: linear-gradient(135deg, #ef4444, #b91c1c); color: white; box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);">
+                🗑 Permanently Delete Account
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MAIN DASHBOARD
+         ═══════════════════════════════════════════════════════ -->
+    <div class="dashboard-container" id="dashboard">
+
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="top-bar-user">
+                <div class="avatar" id="userAvatar">U</div>
+                <div class="user-info">
+                    <div class="user-label">Logged in as</div>
+                    <div class="user-name" id="displayUsername">—</div>
+                </div>
+            </div>
+            <div class="top-bar-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openSwitchPopup()" title="Switch Account">
+                    🔄 Switch
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="handleLogout()" title="Logout">
+                    ⬅ Logout
+                </button>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <div class="dash-header">
+            <h1>Your Private Vault</h1>
+            <p>Securely store and manage your name entries</p>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="stats-row">
+            <div class="stat-badge">
+                <div class="stat-value" id="totalNamesCount">0</div>
+                <div class="stat-label">Names Stored</div>
+            </div>
+            <div class="stat-badge">
+                <div class="stat-value" id="sessionStatus">●</div>
+                <div class="stat-label">Session Active</div>
+            </div>
+        </div>
+
+        <!-- Add Name Card -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title purple">
+                    <span class="icon">✏️</span>
+                    Add a New Name
+                </div>
+            </div>
+            <div class="input-row">
+                <input type="text" id="newNameInput" placeholder="Type a name to store securely..." autocomplete="off">
+                <button class="btn btn-primary" onclick="addName()">Store</button>
+            </div>
+        </div>
+
+        <!-- View Names Card -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title cyan">
+                    <span class="icon">📋</span>
+                    Stored Names Database
+                </div>
+                <button class="btn btn-accent btn-sm" id="showNamesBtn" onclick="toggleNames()">
+                    👁 Show Names
+                </button>
+            </div>
+            <div id="namesSection" class="hidden">
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="id-cell">Sl.No</th>
+                                <th>Name</th>
+                                <th>Date Added</th>
+                                <th class="action-cell">Del</th>
+                            </tr>
+                        </thead>
+                        <tbody id="namesTableBody">
+                            <tr class="empty-row">
+                                <td colspan="4">Click "Show Names" to load your entries</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         JAVASCRIPT – ALL APP LOGIC
+         ═══════════════════════════════════════════════════════ -->
+    <script>
+        const API = "http://localhost:3000";
+
+        // ── Session State ──
+        let currentUserId = null;
+        let currentUsername = "";
+        let namesVisible = false;
+        let switchTargetUsername = "";
+
+        // ═════════════════════════════════════════════════════
+        // TOAST NOTIFICATION SYSTEM
+        // ═════════════════════════════════════════════════════
+        function showToast(message, type = "info") {
+            const container = document.getElementById("toastContainer");
+            const toast = document.createElement("div");
+            const icons = { success: "✅", error: "❌", info: "ℹ️" };
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${icons[type] || ""}</span><span>${message}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                if (toast.parentNode) toast.remove();
+            }, 3200);
+        }
+
+        // ═════════════════════════════════════════════════════
+        // TAB SWITCHING (Login ↔ Register)
+        // ═════════════════════════════════════════════════════
+        function switchTab(tab) {
+            const loginForm = document.getElementById("loginForm");
+            const registerForm = document.getElementById("registerForm");
+            const tabLogin = document.getElementById("tabLogin");
+            const tabRegister = document.getElementById("tabRegister");
+            const title = document.getElementById("authTitle");
+            const subtitle = document.getElementById("authSubtitle");
+
+            if (tab === "login") {
+                loginForm.classList.remove("hidden");
+                registerForm.classList.add("hidden");
+                tabLogin.classList.add("active");
+                tabRegister.classList.remove("active");
+                title.textContent = "Welcome Back";
+                subtitle.textContent = "Sign in to access your private vault";
+            } else {
+                loginForm.classList.add("hidden");
+                registerForm.classList.remove("hidden");
+                tabLogin.classList.remove("active");
+                tabRegister.classList.add("active");
+                title.textContent = "Create Account";
+                subtitle.textContent = "Register to start your secure vault";
+            }
+        }
+
+        // ═════════════════════════════════════════════════════
+        // TOGGLE PASSWORD VISIBILITY
+        // ═════════════════════════════════════════════════════
+        function togglePasswordVisibility(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (input.type === "password") {
+                input.type = "text";
+                btn.textContent = "🙈";
+            } else {
+                input.type = "password";
+                btn.textContent = "👁";
+            }
+        }
+
+        // ═════════════════════════════════════════════════════
+        // LOGIN
+        // ═════════════════════════════════════════════════════
+        async function handleLogin() {
+            const username = document.getElementById("loginUsername").value.trim();
+            const password = document.getElementById("loginPassword").value;
+
+            if (!username || !password) {
+                showToast("Please enter both username and password.", "error");
+                return;
+            }
+
+            const btn = document.getElementById("loginBtn");
+            btn.innerHTML = '<span class="spinner"></span> Verifying...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(API + "/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    currentUserId = data.userId;
+                    currentUsername = data.username;
+                    showToast(data.message, "success");
+                    enterDashboard();
+                } else {
+                    showToast(data.message, "error");
+                }
+            } catch (err) {
+                showToast("Network error! Make sure the server is running (node server.js)", "error");
+                console.error(err);
+            }
+
+            btn.innerHTML = "Sign In";
+            btn.disabled = false;
+        }
+
+        // ═════════════════════════════════════════════════════
+        // REGISTER
+        // ═════════════════════════════════════════════════════
+        async function handleRegister() {
+            const username = document.getElementById("regUsername").value.trim();
+            const password = document.getElementById("regPassword").value;
+            const confirm = document.getElementById("regPasswordConfirm").value;
+
+            if (!username || !password || !confirm) {
+                showToast("Please fill in all fields.", "error");
+                return;
+            }
+
+            if (password !== confirm) {
+                showToast("Passwords do not match!", "error");
+                return;
+            }
+
+            const btn = document.getElementById("registerBtn");
+            btn.innerHTML = '<span class="spinner"></span> Creating...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(API + "/register", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    currentUserId = data.userId;
+                    currentUsername = data.username;
+                    showToast(data.message, "success");
+                    enterDashboard();
+                } else {
+                    showToast(data.message, "error");
+                }
+            } catch (err) {
+                showToast("Network error! Make sure the server is running (node server.js)", "error");
+                console.error(err);
+            }
+
+            btn.innerHTML = "Create Account";
+            btn.disabled = false;
+        }
+
+        // ═════════════════════════════════════════════════════
+        // ENTER DASHBOARD
+        // ═════════════════════════════════════════════════════
+        function enterDashboard() {
+            document.getElementById("authPopup").classList.remove("active");
+            document.getElementById("dashboard").style.display = "block";
+            document.getElementById("displayUsername").textContent = currentUsername;
+            document.getElementById("userAvatar").textContent = currentUsername.charAt(0).toUpperCase();
+
+            // Reset names section
+            namesVisible = false;
+            document.getElementById("namesSection").classList.add("hidden");
+            document.getElementById("showNamesBtn").innerHTML = "👁 Show Names";
+            document.getElementById("namesTableBody").innerHTML =
+                '<tr class="empty-row"><td colspan="4">Click "Show Names" to load your entries</td></tr>';
+
+            // Update stats
+            updateStats();
+
+            // Clear login fields
+            document.getElementById("loginUsername").value = "";
+            document.getElementById("loginPassword").value = "";
+            document.getElementById("regUsername").value = "";
+            document.getElementById("regPassword").value = "";
+            document.getElementById("regPasswordConfirm").value = "";
+        }
+
+        // ═════════════════════════════════════════════════════
+        // LOGOUT
+        // ═════════════════════════════════════════════════════
+        function handleLogout() {
+            currentUserId = null;
+            currentUsername = "";
+            namesVisible = false;
+
+            document.getElementById("dashboard").style.display = "none";
+            document.getElementById("authPopup").classList.add("active");
+
+            // Reset to login tab
+            switchTab("login");
+
+            showToast("Logged out securely.", "info");
+        }
+
+        // ═════════════════════════════════════════════════════
+        // ADD NAME
+        // ═════════════════════════════════════════════════════
+        async function addName() {
+            const input = document.getElementById("newNameInput");
+            const name = input.value.trim();
+
+            if (!name) {
+                showToast("Please enter a name first!", "error");
+                return;
+            }
+
+            try {
+                const res = await fetch(API + "/add_name", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: currentUserId, nameEntry: name })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    input.value = "";
+                    showToast("Name stored securely! 🔒", "success");
+                    updateStats();
+                    if (namesVisible) loadNames();
+                } else {
+                    showToast("Failed to store name.", "error");
+                }
+            } catch (err) {
+                showToast("Network error!", "error");
+                console.error(err);
+            }
+        }
+
+        // ═════════════════════════════════════════════════════
+        // SHOW / HIDE NAMES TOGGLE
+        // ═════════════════════════════════════════════════════
+        function toggleNames() {
+            const section = document.getElementById("namesSection");
+            const btn = document.getElementById("showNamesBtn");
+
+            if (namesVisible) {
+                section.classList.add("hidden");
+                btn.innerHTML = "👁 Show Names";
+                namesVisible = false;
+            } else {
+                section.classList.remove("hidden");
+                btn.innerHTML = "🙈 Hide Names";
+                namesVisible = true;
+                loadNames();
+            }
+        }
+
+        // ═════════════════════════════════════════════════════
+        // LOAD NAMES FROM BACKEND
+        // ═════════════════════════════════════════════════════
+        async function loadNames() {
+            try {
+                const res = await fetch(API + "/get_names?userId=" + currentUserId);
+                const data = await res.json();
+                const tbody = document.getElementById("namesTableBody");
+
+                if (data.success && data.data.length > 0) {
+                    tbody.innerHTML = data.data.map((item, index) => `
+                        <tr>
+                            <td class="id-cell"><span class="id-badge">${index + 1}</span></td>
+                            <td class="name-cell">${escapeHtml(item.name_entry)}</td>
+                            <td class="date-cell">${item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}</td>
+                            <td class="action-cell">
+                                <button class="delete-btn" onclick="deleteName(${item.id})" title="Delete">🗑</button>
+                            </td>
+                        </tr>
+                    `).join("");
+                } else {
+                    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No names stored yet. Add one above! ✨</td></tr>';
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to load names.", "error");
+            }
+        }
+
+        // ═════════════════════════════════════════════════════
+        // DELETE A NAME
+        // ═════════════════════════════════════════════════════
+        async function deleteName(id) {
+            if (!confirm("Delete this name entry?")) return;
+
+            try {
+                const res = await fetch(API + "/delete_name/" + id, {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: currentUserId })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showToast("Name deleted.", "info");
+                    loadNames();
+                    updateStats();
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // ═════════════════════════════════════════════════════
+        // UPDATE STATS
+        // ═════════════════════════════════════════════════════
+        async function updateStats() {
+            try {
+                const res = await fetch(API + "/get_names?userId=" + currentUserId);
+                const data = await res.json();
+                document.getElementById("totalNamesCount").textContent =
+                    data.success ? data.data.length : 0;
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // ═════════════════════════════════════════════════════
+        // ACCOUNT SWITCHER
+        // ═════════════════════════════════════════════════════
+        async function openSwitchPopup() {
+            const popup = document.getElementById("switchPopup");
+            const list = document.getElementById("accountList");
+            const pwSection = document.getElementById("switchPasswordSection");
+
+            // Reset
+            pwSection.classList.add("hidden");
+            document.getElementById("switchPassword").value = "";
+            switchTargetUsername = "";
+            list.innerHTML = '<p style="text-align:center; color: var(--text-muted);">Loading...</p>';
+
+            popup.classList.add("active");
+
+            try {
+                const res = await fetch(API + "/get_users");
+                const data = await res.json();
+
+                if (data.success && data.data.length > 0) {
+                    list.innerHTML = data.data.map(user => `
+                        <div class="account-item ${user.username === currentUsername ? 'current' : ''}"
+                             onclick="selectSwitchAccount('${escapeHtml(user.username)}')">
+                            <div class="mini-avatar">${user.username.charAt(0).toUpperCase()}</div>
+                            <div class="account-name">${escapeHtml(user.username)}</div>
+                            ${user.username === currentUsername ? '<span class="account-badge">Active</span>' : ''}
+                        </div>
+                    `).join("");
+                } else {
+                    list.innerHTML = '<p style="text-align:center; color: var(--text-muted);">No other accounts found.</p>';
+                }
+            } catch (err) {
+                list.innerHTML = '<p style="text-align:center; color: var(--danger);">Failed to load accounts.</p>';
+            }
+        }
+
+        function selectSwitchAccount(username) {
+            if (username === currentUsername) {
+                showToast("You are already logged in as " + username, "info");
+                return;
+            }
+
+            switchTargetUsername = username;
+            document.getElementById("switchTargetUser").textContent = username;
+            document.getElementById("switchPasswordSection").classList.remove("hidden");
+            document.getElementById("switchPassword").value = "";
+            document.getElementById("switchPassword").focus();
+        }
+
+        async function verifySwitchAccount() {
+            const password = document.getElementById("switchPassword").value;
+
+            if (!password) {
+                showToast("Please enter the password.", "error");
+                return;
+            }
+
+            try {
+                const res = await fetch(API + "/verify_password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username: switchTargetUsername, password })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    currentUserId = data.userId;
+                    currentUsername = data.username;
+                    closeSwitchPopup();
+                    enterDashboard();
+                    showToast("Switched to " + data.username + " successfully! 🔄", "success");
+                } else {
+                    showToast(data.message, "error");
+                }
+            } catch (err) {
+                showToast("Verification failed. Check your server.", "error");
+            }
+        }
+
+        function closeSwitchPopup() {
+            document.getElementById("switchPopup").classList.remove("active");
+        }
+
+        // ═════════════════════════════════════════════════════
+        // REMOVE ACCOUNT (Instagram-style)
+        // ═════════════════════════════════════════════════════
+        function openRemovePopup() {
+            closeSwitchPopup();
+            document.getElementById("removeUsername").value = "";
+            document.getElementById("removePassword").value = "";
+            document.getElementById("removePopup").classList.add("active");
+        }
+
+        function closeRemovePopup() {
+            document.getElementById("removePopup").classList.remove("active");
+        }
+
+        async function confirmRemoveAccount() {
+            const username = document.getElementById("removeUsername").value.trim();
+            const password = document.getElementById("removePassword").value;
+
+            if (!username || !password) {
+                showToast("Enter both username and password to confirm.", "error");
+                return;
+            }
+
+            if (!confirm(`⚠️ Are you absolutely sure you want to DELETE the account "${username}"? This CANNOT be undone!`)) {
+                return;
+            }
+
+            const btn = document.getElementById("removeBtn");
+            btn.innerHTML = '<span class="spinner"></span> Deleting...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(API + "/delete_account", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showToast(data.message, "success");
+                    closeRemovePopup();
+
+                    // If the deleted account is the currently logged-in one, logout
+                    if (username === currentUsername) {
+                        handleLogout();
+                    }
+                } else {
+                    showToast(data.message, "error");
+                }
+            } catch (err) {
+                showToast("Failed to remove account. Check your server.", "error");
+                console.error(err);
+            }
+
+            btn.innerHTML = '🗑 Permanently Delete Account';
+            btn.disabled = false;
+        }
+
+        // ═════════════════════════════════════════════════════
+        // UTILITY: Escape HTML to prevent XSS
+        // ═════════════════════════════════════════════════════
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ═════════════════════════════════════════════════════
+        // KEYBOARD SHORTCUTS
+        // ═════════════════════════════════════════════════════
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                // Login form
+                if (!document.getElementById("loginForm").classList.contains("hidden") &&
+                    document.getElementById("authPopup").classList.contains("active")) {
+                    handleLogin();
+                }
+                // Register form
+                if (!document.getElementById("registerForm").classList.contains("hidden") &&
+                    document.getElementById("authPopup").classList.contains("active")) {
+                    handleRegister();
+                }
+                // Switch account password
+                if (document.getElementById("switchPopup").classList.contains("active") &&
+                    !document.getElementById("switchPasswordSection").classList.contains("hidden")) {
+                    verifySwitchAccount();
+                }
+                // Add name from input
+                if (document.activeElement === document.getElementById("newNameInput")) {
+                    addName();
+                }
+            }
+            // Escape to close popups
+            if (e.key === "Escape") {
+                if (document.getElementById("switchPopup").classList.contains("active")) {
+                    closeSwitchPopup();
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
