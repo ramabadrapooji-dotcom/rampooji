@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: rampooji
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        scope: build
+        sync: false
+      - key: PORT
+        value: 3000
+    healthCheckPath: /get_users
