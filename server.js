@@ -25,6 +25,16 @@ pool.on("error", (err) => {
     console.error("Pool error:", err);
 });
 
+console.log("DATABASE_URL is", process.env.DATABASE_URL ? "set" : "not set");
+
+process.on("unhandledRejection", (reason, promise) => {
+    console.error("Unhandled Rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+    console.error("Uncaught Exception:", error);
+});
+
 // Create Tables if they don't exist
 async function initializeDatabase() {
     try {
@@ -51,7 +61,7 @@ async function initializeDatabase() {
 
         console.log("✅ Database tables initialized successfully");
     } catch (err) {
-        console.error("Error initializing database:", err.message);
+        console.error("Error initializing database:", err);
     }
 }
 
