@@ -7,10 +7,21 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SALT_ROUNDS = 10;
+let dbConnected = false;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
+
+app.use((req, res, next) => {
+    if (!dbConnected && req.path !== '/' && !req.path.startsWith('/static')) {
+        return res.status(503).json({
+            success: false,
+            message: "Database is unavailable. Please check your DATABASE_URL and that PostgreSQL is running."
+        });
+    }
+    next();
+});
 
 // Initialize PostgreSQL Database
 const pool = new Pool({
@@ -18,10 +29,12 @@ const pool = new Pool({
 });
 
 pool.on("connect", () => {
+    dbConnected = true;
     console.log("✅ Connected to PostgreSQL database");
 });
 
 pool.on("error", (err) => {
+    dbConnected = false;
     console.error("Pool error:", err);
 });
 
@@ -289,6 +302,6 @@ app.post("/delete_account", async (req, res) => {
 app.listen(PORT, () => {
     console.log("╔══════════════════════════════════════╗");
     console.log("║   🚀 Server running on:              ║");
-    console.log("║   http://localhost:3000               ║");
+    console.log(`║   PORT = ${PORT}                      ║`);
     console.log("╚══════════════════════════════════════╝");
 });

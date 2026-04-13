@@ -7,7 +7,7 @@ services:
     startCommand: npm start
     envVars:
       - key: DATABASE_URL
-        scope: build
+        scope: runtime
         sync: false
       - key: PORT
         value: 3000
