@@ -13,8 +13,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
+// Health check endpoint for Railway / Render
+app.get('/health', (req, res) => res.status(200).send('OK'));
+
 app.use((req, res, next) => {
-    if (!dbConnected && req.path !== '/' && !req.path.startsWith('/static')) {
+    if (!dbConnected && req.path !== '/' && req.path !== '/health' && !req.path.startsWith('/static')) {
         return res.status(503).json({
             success: false,
             message: "Database is unavailable. Please check your DATABASE_URL and that PostgreSQL is running."
@@ -24,8 +27,15 @@ app.use((req, res, next) => {
 });
 
 // Initialize PostgreSQL Database
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+    console.error("❌ DATABASE_URL is not defined. Set DATABASE_URL in your deployment environment.");
+    process.exit(1);
+}
+
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || "postgresql://localhost:5432/myapp"
+    connectionString
 });
 
 pool.on("connect", () => {
@@ -299,9 +309,9 @@ app.post("/delete_account", async (req, res) => {
 });
 
 // ─── Start Server ───────────────────────────────────────────────────
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
     console.log("╔══════════════════════════════════════╗");
     console.log("║   🚀 Server running on:              ║");
-    console.log(`║   PORT = ${PORT}                      ║`);
+    console.log(`║   0.0.0.0:${PORT}                      ║`);
     console.log("╚══════════════════════════════════════╝");
 });
