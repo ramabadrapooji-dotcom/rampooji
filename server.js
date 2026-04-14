@@ -13,7 +13,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Health check endpoint for Railway / Render
+// Health check endpoint for Railway
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.use((req, res, next) => {
@@ -30,12 +30,12 @@ app.use((req, res, next) => {
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
-    console.error("❌ DATABASE_URL is not defined. Set DATABASE_URL in your deployment environment.");
-    process.exit(1);
+    console.error("❌ DATABASE_URL is not defined. Set DATABASE_URL in your Railway environment variables.");
 }
 
 const pool = new Pool({
-    connectionString
+    connectionString,
+    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
 });
 
 pool.on("connect", () => {
@@ -48,18 +48,8 @@ pool.on("error", (err) => {
     console.error("Pool error:", err);
 });
 
-console.log("DATABASE_URL is", process.env.DATABASE_URL ? "set" : "not set");
-
-process.on("unhandledRejection", (reason, promise) => {
-    console.error("Unhandled Rejection:", reason);
-});
-
-process.on("uncaughtException", (error) => {
-    console.error("Uncaught Exception:", error);
-});
-
-// Create Tables if they don't exist
 async function initializeDatabase() {
+    if (!connectionString) return;
     try {
         // Create users table
         await pool.query(`
