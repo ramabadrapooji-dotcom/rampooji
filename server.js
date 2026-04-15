@@ -1,5 +1,5 @@
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
+const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const cors = require("cors");
 require("dotenv").config();
@@ -12,22 +12,35 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Initialize SQLite Database
-const db = new sqlite3.Database('./app_data.db', (err) => {
+// Health Check for Deployment (Railway/Render)
+app.get("/health", (req, res) => {
+    res.status(200).send("OK");
+});
+
+// Initialize PostgreSQL Pool
+const connectionString = process.env.DATABASE_URL;
+
+const pool = new Pool({
+    connectionString: connectionString || "postgresql://postgres:password@localhost:5432/postgres",
+    ssl: connectionString && connectionString.includes('localhost') ? false : { rejectUnauthorized: false }
+});
+
+pool.connect((err, client, release) => {
     if (err) {
-        console.error("Database error:", err.message);
+        console.error("Database connection error (Please set DATABASE_URL):", err.message);
     } else {
-        console.log("✅ Connected to SQLite database");
+        console.log("✅ Connected to PostgreSQL database");
+        release();
         initializeDatabase();
     }
 });
 
-function initializeDatabase() {
-    db.serialize(() => {
+async function initializeDatabase() {
+    try {
         // Create users table
-        db.run(`
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -35,16 +48,19 @@ function initializeDatabase() {
         `);
 
         // Create user_names table
-        db.run(`
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS user_names (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 name_entry TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         `);
-    });
+        console.log("✅ Database tables confirmed");
+    } catch (err) {
+        console.error("Error creating tables:", err.message);
+    }
 }
 
 // ─── API: Register a new account ────────────────────────────────────
@@ -62,141 +78,189 @@ app.post("/register", async (req, res) => {
     }
 
     try {
-        db.get("SELECT id FROM users WHERE username = ?", [username], async (err, row) => {
-            if (err) return res.json({ success: false, message: "Server error." });
-            if (row) return res.json({ success: false, message: "Username already taken. Try a different one." });
+        const result = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
+        if (result.rows.length > 0) {
+            return res.json({ success: false, message: "Username already taken. Try a different one." });
+        }
 
-            const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+        const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-            db.run("INSERT INTO users (username, password_hash) VALUES (?, ?)", [username, passwordHash], function(err) {
-                if (err) {
-                    return res.json({ success: false, message: "Server error during registration." });
-                }
-                res.json({
-                    success: true,
-                    userId: this.lastID,
-                    username: username,
-                    message: "Account created successfully! You are now logged in."
-                });
-            });
+        const insertResult = await pool.query(
+            "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id",
+            [username, passwordHash]
+        );
+
+        res.json({
+            success: true,
+            userId: insertResult.rows[0].id,
+            username: username,
+            message: "Account created successfully! You are now logged in."
         });
     } catch (e) {
-        res.json({ success: false, message: "Server error." });
+        console.error(e);
+        res.json({ success: false, message: "Server error during registration." });
     }
 });
 
 // ─── API: Login with existing credentials ───────────────────────────
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
         return res.json({ success: false, message: "Username and password are required." });
     }
 
-    db.get("SELECT id, username, password_hash FROM users WHERE username = ?", [username], async (err, row) => {
-        if (err) return res.json({ success: false, message: "Server error." });
-        if (!row) return res.json({ success: false, message: "Account not found. Please register first." });
+    try {
+        const result = await pool.query("SELECT id, username, password_hash FROM users WHERE username = $1", [username]);
+        if (result.rows.length === 0) {
+            return res.json({ success: false, message: "Account not found. Please register first." });
+        }
 
+        const row = result.rows[0];
         const match = await bcrypt.compare(password, row.password_hash);
+        
         if (match) {
             res.json({ success: true, userId: row.id, username: row.username, message: "Login successful!" });
         } else {
             res.json({ success: false, message: "Incorrect password." });
         }
-    });
+    } catch (e) {
+        console.error(e);
+        res.json({ success: false, message: "Server error." });
+    }
 });
 
 // ─── API: Verify password (for account switching) ───────────────────
-app.post("/verify_password", (req, res) => {
+app.post("/verify_password", async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
         return res.json({ success: false, message: "Credentials required." });
     }
 
-    db.get("SELECT id, username, password_hash FROM users WHERE username = ?", [username], async (err, row) => {
-        if (err) return res.json({ success: false, message: "Server error." });
-        if (!row) return res.json({ success: false, message: "Account not found." });
+    try {
+        const result = await pool.query("SELECT id, username, password_hash FROM users WHERE username = $1", [username]);
+        if (result.rows.length === 0) {
+            return res.json({ success: false, message: "Account not found." });
+        }
 
+        const row = result.rows[0];
         const match = await bcrypt.compare(password, row.password_hash);
+        
         if (match) {
             res.json({ success: true, userId: row.id, username: row.username, message: "Verified!" });
         } else {
             res.json({ success: false, message: "Incorrect password. Access denied." });
         }
-    });
+    } catch (e) {
+        console.error(e);
+        res.json({ success: false, message: "Server error." });
+    }
 });
 
 // ─── API: Get all registered usernames (for account switcher) ───────
-app.get("/get_users", (req, res) => {
-    db.all("SELECT id, username FROM users ORDER BY username ASC", [], (err, rows) => {
-        if (err) return res.json({ success: false, data: [] });
-        res.json({ success: true, data: rows });
-    });
+app.get("/get_users", async (req, res) => {
+    try {
+        const result = await pool.query("SELECT id, username FROM users ORDER BY username ASC");
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error(err);
+        res.json({ success: false, data: [] });
+    }
 });
 
 // ─── API: Store a Name for the Logged-In User ───────────────────────
-app.post("/add_name", (req, res) => {
+app.post("/add_name", async (req, res) => {
     const { userId, nameEntry } = req.body;
 
     if (!userId || !nameEntry) {
         return res.json({ success: false, message: "Invalid data." });
     }
 
-    db.run("INSERT INTO user_names (user_id, name_entry) VALUES (?, ?)", [userId, nameEntry], function(err) {
-        if (err) return res.json({ success: false, message: "Failed to store name." });
-        res.json({ success: true, id: this.lastID, message: "Name securely stored!" });
-    });
+    try {
+        const result = await pool.query(
+            "INSERT INTO user_names (user_id, name_entry) VALUES ($1, $2) RETURNING id",
+            [userId, nameEntry]
+        );
+        res.json({ success: true, id: result.rows[0].id, message: "Name securely stored!" });
+    } catch (err) {
+        console.error(err);
+        res.json({ success: false, message: "Failed to store name." });
+    }
 });
 
 // ─── API: Delete a name entry ───────────────────────────────────────
-app.delete("/delete_name/:id", (req, res) => {
+app.delete("/delete_name/:id", async (req, res) => {
     const { id } = req.params;
     const { userId } = req.body;
 
-    db.run("DELETE FROM user_names WHERE id = ? AND user_id = ?", [id, userId], function(err) {
-        if (err) return res.json({ success: false, message: "Failed to delete." });
+    try {
+        await pool.query("DELETE FROM user_names WHERE id = $1 AND user_id = $2", [id, userId]);
         res.json({ success: true, message: "Deleted successfully." });
-    });
+    } catch (err) {
+        console.error(err);
+        res.json({ success: false, message: "Failed to delete." });
+    }
 });
 
 // ─── API: Get Names for the Logged-In User ──────────────────────────
-app.get("/get_names", (req, res) => {
+app.get("/get_names", async (req, res) => {
     const userId = req.query.userId;
 
     if (!userId) {
         return res.json({ success: false, message: "User not logged in.", data: [] });
     }
 
-    db.all("SELECT id, name_entry, created_at FROM user_names WHERE user_id = ? ORDER BY id DESC", [userId], (err, rows) => {
-        if (err) return res.json({ success: false, data: [] });
-        res.json({ success: true, data: rows });
-    });
+    try {
+        const result = await pool.query(
+            "SELECT id, name_entry, created_at FROM user_names WHERE user_id = $1 ORDER BY id DESC",
+            [userId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error(err);
+        res.json({ success: false, data: [] });
+    }
 });
 
 // ─── API: Delete Account permanently (requires password) ────────────
-app.post("/delete_account", (req, res) => {
+app.post("/delete_account", async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
         return res.json({ success: false, message: "Credentials required." });
     }
 
-    db.get("SELECT id, password_hash FROM users WHERE username = ?", [username], async (err, row) => {
-        if (err) return res.json({ success: false, message: "Server error." });
-        if (!row) return res.json({ success: false, message: "Account not found." });
+    try {
+        const result = await pool.query("SELECT id, password_hash FROM users WHERE username = $1", [username]);
+        if (result.rows.length === 0) {
+            return res.json({ success: false, message: "Account not found." });
+        }
 
+        const row = result.rows[0];
         const match = await bcrypt.compare(password, row.password_hash);
-        if (!match) return res.json({ success: false, message: "Incorrect password. Cannot delete account." });
+        
+        if (!match) {
+            return res.json({ success: false, message: "Incorrect password. Cannot delete account." });
+        }
 
-        db.serialize(() => {
-            db.run("DELETE FROM user_names WHERE user_id = ?", [row.id]);
-            db.run("DELETE FROM users WHERE id = ?", [row.id], function(err) {
-                if (err) return res.json({ success: false, message: "Failed to delete account." });
-                res.json({ success: true, message: "Account and all data permanently deleted." });
-            });
-        });
-    });
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query("DELETE FROM user_names WHERE user_id = $1", [row.id]);
+            await client.query("DELETE FROM users WHERE id = $1", [row.id]);
+            await client.query('COMMIT');
+            res.json({ success: true, message: "Account and all data permanently deleted." });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error(err);
+        res.json({ success: false, message: "Server error. Failed to delete account." });
+    }
 });
 
 // ─── Start Server ───────────────────────────────────────────────────
