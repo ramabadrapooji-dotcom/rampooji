@@ -7,31 +7,16 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SALT_ROUNDS = 10;
-let dbConnected = false;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
-
-// Health check endpoint for Railway
-app.get('/health', (req, res) => res.status(200).send('OK'));
-
-app.use((req, res, next) => {
-    if (!dbConnected && req.path !== '/' && req.path !== '/health' && !req.path.startsWith('/static')) {
-        return res.status(503).json({
-            success: false,
-            message: "Database is unavailable. Please check your data mount."
-        });
-    }
-    next();
-});
 
 // Initialize SQLite Database
 const db = new sqlite3.Database('./app_data.db', (err) => {
     if (err) {
         console.error("Database error:", err.message);
     } else {
-        dbConnected = true;
         console.log("✅ Connected to SQLite database");
         initializeDatabase();
     }
@@ -215,9 +200,9 @@ app.post("/delete_account", (req, res) => {
 });
 
 // ─── Start Server ───────────────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, () => {
     console.log("╔══════════════════════════════════════╗");
     console.log("║   🚀 Server running on:              ║");
-    console.log(`║   http://0.0.0.0:${PORT}             ║`);
+    console.log(`║   http://localhost:${PORT}             ║`);
     console.log("╚══════════════════════════════════════╝");
 });
